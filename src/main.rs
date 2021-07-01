@@ -1,92 +1,105 @@
-use std::{fs, process::Command, thread, time};
 use notify_rust::{Notification, Urgency};
+use std::{fs, thread, time};
 
-struct STATE {
+struct BatteryState {
 	capacity: String,
-	status: String,
-	new_capacity: String,
-	new_status: String,
+	status: ChargeState,
+	new_status: ChargeState,
+}
+
+#[derive(PartialEq, Clone)]
+enum ChargeState {
+	Full,
+	Charging,
+	Discharging,
 }
 
 fn main() {
-	let mut st: STATE = STATE { capacity: "".to_string(), status: "".to_string(), new_status: "".to_string(), new_capacity: "".to_string()};
-	st = read_capacity(st);
-	st.capacity.clone_from(&st.new_capacity);
-	st.status.clone_from(&st.new_status);
+	let mut battery: BatteryState = BatteryState {
+		capacity: "".to_string(),
+		status: ChargeState::Full,
+		new_status: ChargeState::Full,
+	};
+	battery = read_batterystate(battery);
+	battery.status.clone_from(&battery.new_status);
 	loop {
 		thread::sleep(time::Duration::from_secs(10));
-		st = trigger(st);
+		battery = trigger(battery);
 	}
 }
 
-fn trigger(st: STATE) -> STATE {
-	let mut state = read_capacity(st);
-
-	if state.capacity != state.new_capacity {
-		state.capacity.clone_from(&state.new_capacity);
-	}
-	if state.status != state.new_status {
-		if state.new_status == "Full\n" {
-			status('0');
-		} else if state.new_status == "Charging\n" {
-			status('1');
-		} else if state.new_status == "Discharging\n" {
-			status('2');
-		}
-		state.status.clone_from(&state.new_status);
-	} else if state.status == "Discharging" {
-		if state.capacity <= "10\n".to_string() {
-			capacity('0', &state)
-		} else if state.capacity <= "5\n".to_string() {
-			capacity('1', &state);
-		} else if state.capacity <= "3\n".to_string() {
+fn trigger(mut battery: BatteryState) -> BatteryState {
+	battery = read_batterystate(battery);
+	if battery.status != battery.new_status {
+		status(&battery.new_status);
+		battery.status.clone_from(&battery.new_status);
+	} else if battery.status == ChargeState::Discharging {
+		if battery.capacity <= "10\n".to_string() {
+			capacity('0', &battery.capacity)
+		} else if battery.capacity <= "5\n".to_string() {
+			capacity('1', &battery.capacity);
+		} else if battery.capacity <= "3\n".to_string() {
 		}
 	}
-	state
+	battery
 }
 
-fn status(c: char) {
-	match c {
-		'0' => notify("Fully Charged", "Battery is fully charged.", Urgency::Low),
-		'1' => notify("Charging", "Battery is now plugged in.", Urgency::Low),
-		'2' => notify("Power Unplugged", "Your computer has been disconnected from power.", Urgency::Low),
-		_ => panic!()
+fn status(state: &ChargeState) {
+	match state {
+		ChargeState::Full => notify("Fully Charged", "Battery is fully charged.", Urgency::Low),
+		ChargeState::Charging => notify("Charging", "Battery is now plugged in.", Urgency::Low),
+		ChargeState::Discharging => notify(
+			"Power Unplugged",
+			"Your computer has been disconnected from power.",
+			Urgency::Low,
+		),
 	}
 }
 
-fn capacity(c: char, st: &STATE) {
-	let formated = format!("Less then {}% of battery remaining.", st.status);
+fn capacity(c: char, capacity: &String) {
+	let formated = format!("Less then {}% of battery remaining.", capacity);
 	match c {
-		'0' =>  notify("Low Battery", &formated, Urgency::Normal),
-		'1' => notify("Low Battery", "Your computer will suspend soon unless plugged into a power outlet.", Urgency::Critical),
+		'0' => notify("Low Battery", &formated, Urgency::Normal),
+		'1' => notify(
+			"Low Battery",
+			"Your computer will suspend soon unless plugged into a power outlet.",
+			Urgency::Critical,
+		),
 		'2' => power_off(),
-		_ => panic!()
+		_ => panic!(),
 	}
 }
 
 fn power_off() {
-	Command::new("/usr/bin/systemctl")
+	/*Command::new("/usr/bin/systemctl")
 		.arg("suspend")
 		.spawn()
-		.expect("failed to execute process");
+		.expect("failed to execute process"); */
 }
 
-
-fn notify(title: &str, message: &str, priority:	Urgency) {
+fn notify(title: &str, message: &str, priority: Urgency) {
 	Notification::new()
-	.summary(title)
-	.body(message)
-	.urgency(priority)
-	.show().unwrap();
+		.summary(title)
+		.body(message)
+		.urgency(priority)
+		.show()
+		.unwrap();
 }
 
-fn read_capacity(st: STATE) -> STATE {
-	let mut state = st;
-	let capacity = fs::read_to_string("/sys/class/power_supply/BAT1/capacity")
-		.expect("Failed to read file");
-	let status = fs::read_to_string("/sys/class/power_supply/BAT1/status")
-		.expect("Failed to read file");
-		state.new_capacity = capacity;
-		state.new_status = status;
-		state
+fn read_batterystate(mut battery: BatteryState) -> BatteryState {
+	battery.capacity =
+		fs::read_to_string("/sys/class/power_supply/BAT1/capacity").expect("Failed to read file");
+	battery.new_status = parse_batterystate(
+		&fs::read_to_string("/sys/class/power_supply/BAT1/status").expect("Failed to read file"),
+	);
+	battery
+}
+
+fn parse_batterystate(string: &str) -> ChargeState {
+	match string {
+		"Full\n" => ChargeState::Full,
+		"Charging\n" => ChargeState::Charging,
+		"Discharging\n" => ChargeState::Discharging,
+		_ => panic!(),
+	}
 }

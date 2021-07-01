@@ -1,8 +1,8 @@
 use notify_rust::{Notification, Urgency};
-use std::{fs, thread, time};
+use std::{fs, str::FromStr, thread, time};
 
 struct BatteryState {
-	capacity: String,
+	capacity: i32,
 	status: ChargeState,
 	new_status: ChargeState,
 }
@@ -16,7 +16,7 @@ enum ChargeState {
 
 fn main() {
 	let mut battery: BatteryState = BatteryState {
-		capacity: "".to_string(),
+		capacity: 100,
 		status: ChargeState::Full,
 		new_status: ChargeState::Full,
 	};
@@ -34,11 +34,12 @@ fn trigger(mut battery: BatteryState) -> BatteryState {
 		status(&battery.new_status);
 		battery.status.clone_from(&battery.new_status);
 	} else if battery.status == ChargeState::Discharging {
-		if battery.capacity <= "10\n".to_string() {
+		if battery.capacity <= 3 {
+			capacity('2', &battery.capacity)
+		} else if battery.capacity <= 5 {
+			capacity('1', &battery.capacity)
+		} else if battery.capacity <= 10 {
 			capacity('0', &battery.capacity)
-		} else if battery.capacity <= "5\n".to_string() {
-			capacity('1', &battery.capacity);
-		} else if battery.capacity <= "3\n".to_string() {
 		}
 	}
 	battery
@@ -56,7 +57,7 @@ fn status(state: &ChargeState) {
 	}
 }
 
-fn capacity(c: char, capacity: &String) {
+fn capacity(c: char, capacity: &i32) {
 	let formated = format!("Less then {}% of battery remaining.", capacity);
 	match c {
 		'0' => notify("Low Battery", &formated, Urgency::Normal),
@@ -72,9 +73,9 @@ fn capacity(c: char, capacity: &String) {
 
 fn power_off() {
 	/*Command::new("/usr/bin/systemctl")
-		.arg("suspend")
-		.spawn()
-		.expect("failed to execute process"); */
+	.arg("suspend")
+	.spawn()
+	.expect("failed to execute process"); */
 }
 
 fn notify(title: &str, message: &str, priority: Urgency) {
@@ -87,19 +88,25 @@ fn notify(title: &str, message: &str, priority: Urgency) {
 }
 
 fn read_batterystate(mut battery: BatteryState) -> BatteryState {
-	battery.capacity =
-		fs::read_to_string("/sys/class/power_supply/BAT1/capacity").expect("Failed to read file");
+	battery.capacity = i32::from_str(
+		&fs::read_to_string("/sys/class/power_supply/BAT1/capacity")
+			.expect("Failed to read file")
+			.replace("\n", ""),
+	)
+	.unwrap();
 	battery.new_status = parse_batterystate(
-		&fs::read_to_string("/sys/class/power_supply/BAT1/status").expect("Failed to read file"),
+		&fs::read_to_string("/sys/class/power_supply/BAT1/status")
+			.expect("Failed to read file")
+			.replace("\n", ""),
 	);
 	battery
 }
 
 fn parse_batterystate(string: &str) -> ChargeState {
 	match string {
-		"Full\n" => ChargeState::Full,
-		"Charging\n" => ChargeState::Charging,
-		"Discharging\n" => ChargeState::Discharging,
+		"Full" => ChargeState::Full,
+		"Charging" => ChargeState::Charging,
+		"Discharging" => ChargeState::Discharging,
 		_ => panic!(),
 	}
 }

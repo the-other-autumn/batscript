@@ -34,13 +34,7 @@ fn trigger(mut battery: BatteryState) -> BatteryState {
 		status(&battery.new_status);
 		battery.status.clone_from(&battery.new_status);
 	} else if battery.status == ChargeState::Discharging {
-		if battery.capacity <= 3 {
-			capacity('2', &battery.capacity)
-		} else if battery.capacity <= 5 {
-			capacity('1', &battery.capacity)
-		} else if battery.capacity <= 10 {
-			capacity('0', &battery.capacity)
-		}
+		capacity(battery.capacity)
 	}
 	battery
 }
@@ -57,17 +51,18 @@ fn status(state: &ChargeState) {
 	}
 }
 
-fn capacity(c: char, capacity: &i32) {
-	let formated = format!("Less then {}% of battery remaining.", capacity);
-	match c {
-		'0' => notify("Low Battery", &formated, Urgency::Normal),
-		'1' => notify(
+fn capacity(capacity: i32) {
+	if capacity <= 3 {
+		power_off()
+	} else if capacity <= 5 {
+		notify(
 			"Low Battery",
 			"Your computer will suspend soon unless plugged into a power outlet.",
 			Urgency::Critical,
-		),
-		'2' => power_off(),
-		_ => panic!(),
+		)
+	} else if capacity <= 10 {
+	let formated = format!("Less then {}% of battery remaining.", capacity);
+		notify("Low Battery", &formated, Urgency::Normal)
 	}
 }
 

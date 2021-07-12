@@ -1,5 +1,5 @@
 use notify_rust::{Notification, Urgency};
-use std::{fs, str::FromStr, thread, time};
+use std::{fs, str::FromStr, thread, time, process::Command};
 
 struct BatteryState {
 	capacity: i32,
@@ -67,10 +67,10 @@ fn capacity(capacity: i32) {
 }
 
 fn power_off() {
-	/*Command::new("/usr/bin/systemctl")
+	Command::new("/usr/bin/systemctl")
 	.arg("suspend")
 	.spawn()
-	.expect("failed to execute process"); */
+	.expect("failed to execute process");
 }
 
 fn notify(title: &str, message: &str, priority: Urgency) {

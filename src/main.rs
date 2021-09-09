@@ -1,5 +1,5 @@
 use notify_rust::{Notification, Urgency};
-use std::{fs, str::FromStr, thread, time, process::Command};
+use std::{fs, process::Command, str::FromStr, thread, time};
 
 struct BatteryState {
 	capacity: i32,
@@ -12,6 +12,7 @@ enum ChargeState {
 	Full,
 	Charging,
 	Discharging,
+	Unknown,
 }
 
 fn main() {
@@ -30,7 +31,7 @@ fn main() {
 
 fn trigger(mut battery: BatteryState) -> BatteryState {
 	battery = read_batterystate(battery);
-	if battery.status != battery.new_status {
+	if battery.status != battery.new_status && battery.new_status != ChargeState::Unknown {
 		status(&battery.new_status);
 		battery.status.clone_from(&battery.new_status);
 	} else if battery.status == ChargeState::Discharging {
@@ -43,11 +44,8 @@ fn status(state: &ChargeState) {
 	match state {
 		ChargeState::Full => notify("Fully Charged", "Battery is fully charged.", Urgency::Low),
 		ChargeState::Charging => notify("Charging", "Battery is now plugged in.", Urgency::Low),
-		ChargeState::Discharging => notify(
-			"Power Unplugged",
-			"Your computer has been disconnected from power.",
-			Urgency::Low,
-		),
+		ChargeState::Discharging => notify("Power Unplugged", "Your computer has been disconnected from power.", Urgency::Low),
+		ChargeState::Unknown => (),
 	}
 }
 
@@ -55,31 +53,19 @@ fn capacity(capacity: i32) {
 	if capacity <= 3 {
 		power_off()
 	} else if capacity <= 5 {
-		notify(
-			"Low Battery",
-			"Your computer will suspend soon unless plugged into a power outlet.",
-			Urgency::Critical,
-		)
+		notify("Low Battery", "Your computer will suspend soon unless plugged into a power outlet.", Urgency::Critical)
 	} else if capacity <= 10 {
-	let formated = format!("Less then {}% of battery remaining.", capacity);
+		let formated = format!("Less then {}% of battery remaining.", capacity);
 		notify("Low Battery", &formated, Urgency::Normal)
 	}
 }
 
 fn power_off() {
-	Command::new("/usr/bin/systemctl")
-	.arg("suspend")
-	.spawn()
-	.expect("failed to execute process");
+	Command::new("/usr/bin/sudo").args(["/usr/bin/systemctl", "suspend"]).spawn().expect("failed to execute process");
 }
 
 fn notify(title: &str, message: &str, priority: Urgency) {
-	Notification::new()
-		.summary(title)
-		.body(message)
-		.urgency(priority)
-		.show()
-		.unwrap();
+	Notification::new().summary(title).body(message).urgency(priority).show().unwrap();
 }
 
 fn read_batterystate(mut battery: BatteryState) -> BatteryState {
@@ -102,6 +88,7 @@ fn parse_batterystate(string: &str) -> ChargeState {
 		"Full" => ChargeState::Full,
 		"Charging" => ChargeState::Charging,
 		"Discharging" => ChargeState::Discharging,
+		"Unknown" => ChargeState::Unknown,
 		_ => panic!(),
 	}
 }

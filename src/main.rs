@@ -1,5 +1,10 @@
 use notify_rust::{Notification, Urgency};
-use std::{fs, process::Command, str::FromStr, thread, time};
+use std::{
+	fs::{self, metadata},
+	process::{Command, exit},
+	str::FromStr,
+	thread, time, path::Path,
+};
 
 struct BatteryState {
 	capacity: i32,
@@ -21,11 +26,20 @@ fn main() {
 		status: ChargeState::Full,
 		new_status: ChargeState::Full,
 	};
-	battery = read_batterystate(battery);
-	battery.status.clone_from(&battery.new_status);
+	let path = Path::new("/sys/class/power_supply/BAT1");
+	if metadata(path).is_ok()
+	{
+		battery = trigger(battery);
+		battery.status.clone_from(&battery.new_status);
+	} else {
+		exit(0)
+	}
 	loop {
 		thread::sleep(time::Duration::from_secs(10));
-		battery = trigger(battery);
+		if metadata(path).is_ok()
+		{
+			battery = trigger(battery);
+		}
 	}
 }
 
@@ -44,7 +58,7 @@ fn status(state: &ChargeState) {
 	match state {
 		ChargeState::Full => notify("Fully Charged", "Battery is fully charged.", Urgency::Low),
 		ChargeState::Charging => notify("Charging", "Battery is now plugged in.", Urgency::Low),
-		ChargeState::Discharging => notify("Power Unplugged", "Your computer has been disconnected from power.", Urgency::Low),
+		ChargeState::Discharging => notify("Power Unplugged","Battery is now discharging.", Urgency::Low),
 		ChargeState::Unknown => (),
 	}
 }
@@ -72,13 +86,13 @@ fn read_batterystate(mut battery: BatteryState) -> BatteryState {
 	battery.capacity = i32::from_str(
 		&fs::read_to_string("/sys/class/power_supply/BAT1/capacity")
 			.expect("Failed to read file")
-			.replace("\n", ""),
+			.replace('\n', ""),
 	)
 	.unwrap();
 	battery.new_status = parse_batterystate(
 		&fs::read_to_string("/sys/class/power_supply/BAT1/status")
 			.expect("Failed to read file")
-			.replace("\n", ""),
+			.replace('\n', ""),
 	);
 	battery
 }
@@ -88,7 +102,6 @@ fn parse_batterystate(string: &str) -> ChargeState {
 		"Full" => ChargeState::Full,
 		"Charging" => ChargeState::Charging,
 		"Discharging" => ChargeState::Discharging,
-		"Unknown" => ChargeState::Unknown,
-		_ => panic!(),
+		_ => ChargeState::Unknown,
 	}
 }
